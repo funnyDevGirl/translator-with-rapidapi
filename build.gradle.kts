@@ -68,6 +68,9 @@ dependencies {
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-api:2.2.0")
 	testImplementation("org.springdoc:springdoc-openapi-starter-webmvc-api:2.2.0")
 
+	testImplementation("com.squareup.okhttp3:okhttp:4.9.1")
+	testImplementation("com.squareup.okhttp3:mockwebserver:4.9.1")
+
 	implementation("org.openapitools:jackson-databind-nullable:0.2.6")
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	runtimeOnly("org.postgresql:postgresql")
