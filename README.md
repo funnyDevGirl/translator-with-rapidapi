@@ -21,7 +21,7 @@ To work with the Translate API, you need to get the key from the Rapid API servi
 
 For the convenience of testing, a temporary key is placed in ```application.yml```:
 ```yaml
-api-key: "c0ca5aaa0emsh2ceea15e6facedcp101d54jsn7e756f330ba5"
+api-key: ${API_KEY}
 translate-url: "https://google-translator9.p.rapidapi.com/v2"
 api-url: "https://google-translator9.p.rapidapi.com/v2/languages"
 ```
