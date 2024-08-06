@@ -41,12 +41,14 @@ public class TranslationControllerTest {
                 .andReturn();
         var body = result.getResponse().getContentAsString();
         assertThatJson(body).isArray();
+
+        Thread.sleep(2000);
     }
 
     @Test
     @Order(2)
     @DisplayName("Test translate 1")
-    public void translateTestOne() throws Exception {
+    public void translateSuccessTestOneLang() throws Exception {
         String requestDTO = """
                 {
                 "inputText": "Hello world",
@@ -64,12 +66,14 @@ public class TranslationControllerTest {
         JsonNode json = om.readTree(body);
         String actual = json.get("translatedText").asText();
         assertThat(actual).isEqualTo(expected);
+
+        Thread.sleep(2000);
     }
 
     @Test
     @Order(3)
     @DisplayName("Test translate 2")
-    public void translateTestTwo() throws Exception {
+    public void translateSuccessTestSecondLang() throws Exception {
         String requestDTO = """
                 {
                 "inputText": "Soy un programador principiante",
@@ -86,5 +90,7 @@ public class TranslationControllerTest {
         JsonNode json = om.readTree(body);
         String actual = json.get("translatedText").asText();
         assertThat(actual).isEqualTo(expected);
+
+        Thread.sleep(2000);
     }
 }
