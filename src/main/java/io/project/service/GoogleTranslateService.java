@@ -1,10 +1,10 @@
 package io.project.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.project.exception.LanguageNotFoundException;
 import io.project.exception.TranslationResourceAccessException;
-import io.project.model.SupportedLanguagesResponse;
 import io.project.model.Translation;
 import io.project.repository.TranslationRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -17,14 +17,15 @@ import org.springframework.http.HttpMethod;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
-
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
+import java.util.HashSet;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,6 +35,7 @@ import static io.project.model.SupportedLanguagesResponse.Language;
 
 @Service
 public class GoogleTranslateService {
+
     @Value("${api-key}")
     private String apiKey;
 
@@ -43,8 +45,8 @@ public class GoogleTranslateService {
     @Value("${api-url}")
     private String apiUrl;
 
-    private static final String API_HOST = "google-translate1.p.rapidapi.com";
-
+    private static final String API_HOST = "google-translator9.p.rapidapi.com";
+    private final ObjectMapper om;
     private final RestTemplate restTemplate;
     private final TranslationRepository repository;
     private static final int MAX_THREADS = 10;
@@ -54,21 +56,21 @@ public class GoogleTranslateService {
                                   TranslationRepository repository) {
         this.restTemplate = restTemplate;
         this.repository = repository;
+        this.om = new ObjectMapper();
     }
 
     @Retryable(
             retryFor = { Exception.class },
-            maxAttempts = 5,
             backoff = @Backoff(delay = 1000, multiplier = 2))
     public String translate(String inputText, String sourceLang, String targetLang, String ipAddress) {
 
         // validation
         Set<Language> supportedLanguages = fetchSupportedLanguages();
 
-        if (isContainsLang(sourceLang, supportedLanguages)) {
+        if (isNotContainsLang(sourceLang, supportedLanguages)) {
             throw new LanguageNotFoundException("Не найден исходный язык: " + sourceLang);
         }
-        if (isContainsLang(targetLang, supportedLanguages)) {
+        if (isNotContainsLang(targetLang, supportedLanguages)) {
             throw new LanguageNotFoundException("Не найден целевой язык: " + targetLang);
         }
 
@@ -77,7 +79,13 @@ public class GoogleTranslateService {
         // translate words
         for (String word : inputText.split(" ")) {
             CompletableFuture<String> future = CompletableFuture.supplyAsync(
-                    () -> translateWord(word, sourceLang, targetLang), executor);
+                    () -> {
+                        try {
+                            return translateWord(word, sourceLang, targetLang);
+                        } catch (JsonProcessingException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }, executor);
             translationFutures.add(future);
         }
 
@@ -93,24 +101,28 @@ public class GoogleTranslateService {
         request.setTranslatedText(finishedText);
         repository.save(request);
 
-        executor.shutdown();
         return finishedText;
     }
 
-    public String translateWord(String text, String sourceLanguage, String targetLanguage) {
+    public String translateWord(String text, String sourceLanguage, String targetLanguage)
+            throws JsonProcessingException {
         HttpHeaders headers = new HttpHeaders();
         headers.set("x-rapidapi-key", apiKey);
         headers.set("x-rapidapi-host", API_HOST);
-        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
-        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("q", text);
-        body.add("target", targetLanguage);
-        body.add("source", sourceLanguage);
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("q", text);
+        requestBody.put("source", sourceLanguage);
+        requestBody.put("target", targetLanguage);
 
-        HttpEntity<MultiValueMap<String, String>> requestEntity = new HttpEntity<>(body, headers);
+        String jsonBody = om.writeValueAsString(requestBody);
 
-        ResponseEntity<String> response = restTemplate.postForEntity(apiUrl, requestEntity, String.class);
+        HttpEntity<String> entity = new HttpEntity<>(jsonBody, headers);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                translateUrl, HttpMethod.POST, entity, String.class);
+
 
         if (response.getStatusCode() == HttpStatus.OK) {
             return parseTranslatedWord(response.getBody());
@@ -120,28 +132,25 @@ public class GoogleTranslateService {
         }
     }
 
-
     private String parseTranslatedWord(String responseBody) {
-
-        ObjectMapper objectMapper = new ObjectMapper();
         try {
-            JsonNode rootNode = objectMapper.readTree(responseBody);
-            JsonNode translationsNode = rootNode.path("translations");
-
+            JsonNode rootNode = om.readTree(responseBody);
+            JsonNode translationsNode = rootNode.path("data").path("translations");
             if (translationsNode.isArray() && !translationsNode.isEmpty()) {
-                return translationsNode.get(0).path("text").asText();
+                var text = translationsNode.get(0).path("translatedText").asText();
+                return URLDecoder.decode(text, StandardCharsets.UTF_8);
             } else {
                 throw new TranslationResourceAccessException(
-                        "Ошибка доступа к ресурсу перевода: неверный формат ответа");
+                    "Ошибка доступа к ресурсу перевода: неверный формат ответа");
             }
         } catch (Exception e) {
             throw new TranslationResourceAccessException("Ошибка доступа к ресурсу перевода: "
-                    + e.getMessage());
+                + e.getMessage());
         }
     }
 
-    private boolean isContainsLang(String lang, Set<Language> languages) {
-        return languages.stream().anyMatch(l -> l.getLanguage().equals(lang));
+    private boolean isNotContainsLang(String lang, Set<Language> languages) {
+        return languages.stream().noneMatch(l -> l.getLanguage().equals(lang));
     }
 
     public Set<Language> fetchSupportedLanguages() {
@@ -149,15 +158,31 @@ public class GoogleTranslateService {
         HttpHeaders headers = new HttpHeaders();
         headers.set("x-rapidapi-key", apiKey);
         headers.set("x-rapidapi-host", API_HOST);
-        headers.setContentType(MediaType.APPLICATION_JSON);
 
         HttpEntity<String> entity = new HttpEntity<>(headers);
 
-        ResponseEntity<SupportedLanguagesResponse> response = Objects.requireNonNull(restTemplate).exchange(
-                Objects.requireNonNull(apiUrl), HttpMethod.GET, entity, SupportedLanguagesResponse.class);
+        ResponseEntity<String> response = restTemplate.exchange(
+                apiUrl, HttpMethod.GET, entity, String.class);
 
         if (response.getStatusCode() == HttpStatus.OK) {
-            return Objects.requireNonNull(response.getBody()).getLanguages();
+            try {
+                JsonNode js = om.readTree(response.getBody());
+                JsonNode l = js.path("data").path("languages");
+
+                Set<Language> languages = new HashSet<>();
+
+                for (JsonNode n : l) {
+                    Language language = new Language();
+                    language.setLanguage(n.path("language").asText());
+                    language.setName(n.path("name").asText());
+                    languages.add(language);
+                }
+                return languages;
+
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+
         } else {
             throw new RuntimeException("Не удалось получить список поддерживаемых языков: "
                     + response.getStatusCode());

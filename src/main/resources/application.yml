@@ -26,5 +26,6 @@ logging:
 
 #api-key: ${API_KEY}
 api-key: "c0ca5aaa0emsh2ceea15e6facedcp101d54jsn7e756f330ba5"
-translate-url: "https://google-translate1.p.rapidapi.com/language/translate/v2"
-api-url: "https://google-translate1.p.rapidapi.com/language/translate/v2/languages"
+translate-url: "https://google-translator9.p.rapidapi.com/v2"
+api-url: "https://google-translator9.p.rapidapi.com/v2/languages"
+
