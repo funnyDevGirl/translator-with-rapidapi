@@ -26,7 +26,7 @@ translate-url: "https://google-translator9.p.rapidapi.com/v2"
 api-url: "https://google-translator9.p.rapidapi.com/v2/languages"
 ```
 ###
-### Methods for the Yandex Translate service
+### Methods for the Translate service
 * ```fetchSupportedLanguages()``` - Retrieves the list of supported languages:
 
 HTTP-запрос
